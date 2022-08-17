@@ -2,10 +2,26 @@ package main
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
+	"time"
 )
+
+type CertExtension struct {
+	ID    *string `json:"id,omitempty"`
+	Value *string `json:"value,omitempty"`
+}
+type Certificate struct {
+	Version            *int             `json:"version,omitempty"`
+	SerialNumber       *string          `json:"serial_number,omitempty"`
+	SignatureAlgorithm *string          `json:"signature_algorithm,omitempty"`
+	IssuerOrganization *string          `json:"issuer_organization,omitempty"`
+	IssuerCommonName   *string          `json:"issuer_common_name,omitempty"`
+	ValidityNotBefore  *time.Time       `json:"validity_not_before,omitempty"`
+	ValidityNotAfter   *time.Time       `json:"validity_not_after,omitempty"`
+	Extensions         *[]CertExtension `json:"extensions,omitempty"`
+}
 
 func main() {
 	publicKey := `-----BEGIN CERTIFICATE-----
@@ -101,7 +117,6 @@ QkDk2FLnbks1njisGa4L8iJUaNuat8XQGGB9QD5MUcQ=
 		        9a:b7:c5:d0:18:60:7d:40:3e:4c:51:c4
 	*/
 	// cat public.key | openssl x509  -noout -text
-
 	block, _ := pem.Decode([]byte(publicKey))
 	if block == nil {
 		panic("failed to parse certificate PEM")
@@ -110,20 +125,41 @@ QkDk2FLnbks1njisGa4L8iJUaNuat8XQGGB9QD5MUcQ=
 	if err != nil {
 		panic("failed to parse certificate: " + err.Error())
 	}
-	// print the
-	fmt.Println("Version:", cert.Version)
-	fmt.Println("Version:", cert.Version)
-	fmt.Printf("Serial Number:%x\n", cert.SerialNumber)
-	fmt.Println("Signature Algorithm:", cert.SignatureAlgorithm.String())
-	fmt.Println("Issuer:", cert.Issuer.Organization[0], cert.Issuer.CommonName)
-	fmt.Println()
-	fmt.Println("Validity:")
-	fmt.Println(cert.NotBefore)
-	fmt.Println(cert.NotAfter)
-	fmt.Println(cert.Subject)
-	fmt.Println("X509v3 extensions:")
-	spew.Dump(cert.Extensions)
-	fmt.Println("Signature Algorithm:", cert.SignatureAlgorithm)
-	fmt.Println(" Signature Value:")
-	spew.Dump(cert.Signature)
+	serialNumber := cert.SerialNumber.String()
+	signatureAlgorithm := cert.SignatureAlgorithm.String()
+	var extension []CertExtension
+	validCerts := map[string]bool{
+		"2.5.29.17":             true,
+		"1.3.6.1.4.1.57264.1.1": true,
+		"1.3.6.1.4.1.57264.1.2": true,
+		"1.3.6.1.4.1.57264.1.3": true,
+		"1.3.6.1.4.1.57264.1.4": true,
+		"1.3.6.1.4.1.57264.1.5": true,
+		"1.3.6.1.4.1.57264.1.6": true,
+	}
+
+	for _, e := range cert.Extensions {
+		if _, ok := validCerts[e.Id.String()]; !ok {
+			continue
+		}
+		id := e.Id.String()
+		value := string(e.Value)
+		extension = append(extension, CertExtension{
+			ID:    &id,
+			Value: &value,
+		})
+	}
+	certificate := Certificate{
+		Version:            &cert.Version,
+		SerialNumber:       &serialNumber,
+		SignatureAlgorithm: &signatureAlgorithm,
+		IssuerOrganization: &cert.Issuer.Organization[0],
+		IssuerCommonName:   &cert.Issuer.CommonName,
+		ValidityNotBefore:  &cert.NotBefore,
+		ValidityNotAfter:   &cert.NotAfter,
+		Extensions:         &extension,
+	}
+
+	jsons, _ := json.Marshal(certificate)
+	fmt.Println(string(jsons))
 }
